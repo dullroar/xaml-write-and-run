@@ -1,0 +1,14 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Stage 2 of 2 (terminal) - xaml-write-and-run"
+        Width="480" Height="210"
+        WindowStartupLocation="CenterScreen" Topmost="True" Background="#1B2A1B">
+  <StackPanel Margin="20">
+    <TextBlock Foreground="#9CFF9C" FontWeight="Bold" FontSize="16" TextWrapping="Wrap"
+               Text="Stage 2: terminal state. This file did not exist a moment ago."/>
+    <TextBlock Foreground="White" FontSize="13" Margin="0,10,0,0" TextWrapping="Wrap"
+               Text="Stage 1 wrote me to disk, slept, then called XamlReader.Load on me. No code-behind ran to make that happen -- it was all ObjectDataProvider entries declared in Stage 1's own XAML."/>
+    <TextBlock Foreground="#FFCE56" FontSize="13" Margin="0,10,0,0" TextWrapping="Wrap"
+               Text="Stage 2 writes nothing further. The chain stops here on purpose."/>
+  </StackPanel>
+</Window>

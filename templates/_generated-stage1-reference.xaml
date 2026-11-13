@@ -1,0 +1,125 @@
+﻿<!-- STAGE 1 (middle link). Generated verbatim into data/stage1.generated.xaml by the launcher at
+     runtime, then loaded by XamlReader.Load from inside the launcher's own XAML parse. Everything
+     below runs with no code-behind: every side effect is an ObjectDataProvider invoking a built-in
+     .NET/WPF method, constructed in document order as this document is parsed.
+
+     Stage 1 repeats the exact same trick one more link down the chain: it writes Stage 2 to disk,
+     sleeps, loads it with XamlReader.Load, and shows it: proving the write-then-run primitive
+     composes, not just fires once. -->
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+        xmlns:io="clr-namespace:System.IO;assembly=System.Runtime"
+        xmlns:thr="clr-namespace:System.Threading;assembly=System.Threading.Thread"
+        xmlns:mk="clr-namespace:System.Windows.Markup;assembly=PresentationFramework"
+        Title="Stage 1 of 2 - xaml-write-and-run" Width="480" Height="230"
+        WindowStartupLocation="CenterScreen" Background="#172033">
+<Window.Resources>
+
+  <!-- The complete text of Stage 2's .xaml file, carried as a plain string resource.
+       xml:space="preserve" keeps its newlines/indentation intact (default XAML text handling
+       collapses whitespace runs, which would mangle a multi-line payload). -->
+  <sys:String x:Key="stage2Payload" xml:space="preserve">&lt;Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Stage 2 of 2 (terminal) - xaml-write-and-run"
+        Width="480" Height="210"
+        WindowStartupLocation="CenterScreen" Topmost="True" Background="#1B2A1B"&gt;
+  &lt;StackPanel Margin="20"&gt;
+    &lt;TextBlock Foreground="#9CFF9C" FontWeight="Bold" FontSize="16" TextWrapping="Wrap"
+               Text="Stage 2: terminal state. This file did not exist a moment ago."/&gt;
+    &lt;TextBlock Foreground="White" FontSize="13" Margin="0,10,0,0" TextWrapping="Wrap"
+               Text="Stage 1 wrote me to disk, slept, then called XamlReader.Load on me. No code-behind ran to make that happen -- it was all ObjectDataProvider entries declared in Stage 1's own XAML."/&gt;
+    &lt;TextBlock Foreground="#FFCE56" FontSize="13" Margin="0,10,0,0" TextWrapping="Wrap"
+               Text="Stage 2 writes nothing further. The chain stops here on purpose."/&gt;
+  &lt;/StackPanel&gt;
+&lt;/Window&gt;
+</sys:String>
+
+  <ObjectDataProvider x:Key="log1a" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">stage1: started&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <!-- Early object: writes Stage 2's .xaml file. File.WriteAllText is synchronous: it opens,
+       writes every byte, and closes the handle (flushing to the OS) before this ObjectDataProvider
+       is considered initialized, before the parser moves on to the next resource entry. -->
+  <ObjectDataProvider x:Key="writeStage2" ObjectType="{x:Type io:File}" MethodName="WriteAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/stage2.generated.xaml</sys:String>
+      <StaticResource ResourceKey="stage2Payload"/>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <ObjectDataProvider x:Key="log1b" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">stage1: wrote data/stage2.generated.xaml&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <!-- Explicit pause, purely as visible/measurable proof that the write above is already durable.
+       (File.WriteAllText already guaranteed that by closing the handle; this Sleep is belt-and-
+       suspenders so the elapsed time between log lines is observable in data/run.log / wall clock.) -->
+  <ObjectDataProvider x:Key="sleep1" ObjectType="{x:Type thr:Thread}" MethodName="Sleep">
+    <ObjectDataProvider.MethodParameters><sys:Int32>400</sys:Int32></ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <ObjectDataProvider x:Key="log1c" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">stage1: slept 400ms&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <!-- Later object, same document: opens the file the early object wrote above. -->
+  <io:FileStream x:Key="stage2Stream">
+    <x:Arguments>
+      <sys:String>data/stage2.generated.xaml</sys:String>
+      <x:Static Member="io:FileMode.Open"/>
+    </x:Arguments>
+  </io:FileStream>
+
+  <!-- ...and hands it to XamlReader.Load, which deserializes Stage 2 into a real Window object,
+       recursively running Stage 2's own (empty, terminal) resource dictionary as it does so. -->
+  <ObjectDataProvider x:Key="loadStage2" ObjectType="{x:Type mk:XamlReader}" MethodName="Load">
+    <ObjectDataProvider.MethodParameters><StaticResource ResourceKey="stage2Stream"/></ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <ObjectDataProvider x:Key="log1d" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">stage1: loaded stage2 via XamlReader.Load&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <!-- loadStage2's StaticResource reference auto-unwraps to its .Data (the Window XamlReader.Load
+       returned), so this calls Show() on the freshly-deserialized Stage 2 window. -->
+  <ObjectDataProvider x:Key="showStage2" ObjectInstance="{StaticResource loadStage2}" MethodName="Show"/>
+
+  <ObjectDataProvider x:Key="log1e" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">stage1: called Show() on the loaded stage2 window&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+</Window.Resources>
+<Grid x:Name="g1">
+  <Grid.Triggers>
+    <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+      <BeginStoryboard><Storyboard>
+        <DoubleAnimation Storyboard.TargetName="g1" Storyboard.TargetProperty="Opacity"
+                          From="1" To="0.5" Duration="0:0:1" AutoReverse="True" RepeatBehavior="Forever"/>
+      </Storyboard></BeginStoryboard>
+    </EventTrigger>
+  </Grid.Triggers>
+  <StackPanel Margin="20">
+    <TextBlock Foreground="#FFCE56" FontWeight="Bold" FontSize="16" TextWrapping="Wrap"
+               Text="Stage 1: I was written to disk by the launcher a moment ago, then loaded and run by XamlReader.Load."/>
+    <TextBlock Foreground="White" FontSize="13" Margin="0,10,0,0" TextWrapping="Wrap"
+               Text="While being parsed, I wrote Stage 2 to disk, slept, loaded it, and called Show() on it -- all from my own XAML, no code-behind."/>
+  </StackPanel>
+</Grid>
+</Window>
