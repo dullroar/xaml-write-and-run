@@ -1,0 +1,4 @@
+bin/
+obj/
+src/data/*.generated.xaml
+src/data/run.log
