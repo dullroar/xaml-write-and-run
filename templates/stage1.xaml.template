@@ -8,9 +8,9 @@
      composes, not just fires once. -->
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
-        xmlns:io="clr-namespace:System.IO;assembly=System.Runtime"
-        xmlns:thr="clr-namespace:System.Threading;assembly=System.Threading.Thread"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:io="clr-namespace:System.IO;assembly=mscorlib"
+        xmlns:thr="clr-namespace:System.Threading;assembly=mscorlib"
         xmlns:mk="clr-namespace:System.Windows.Markup;assembly=PresentationFramework"
         Title="Stage 1 of 2 - xaml-write-and-run" Width="480" Height="230"
         WindowStartupLocation="CenterScreen" Background="#172033">
