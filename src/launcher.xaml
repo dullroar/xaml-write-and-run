@@ -5,12 +5,17 @@
 
      The research question: can an EARLY object in a XAML document write a brand-new .xaml file to
      disk, and can a LATER object in that same document then load and run it: proving that a XAML
-     stream can rewrite and re-extend its own behavior at runtime, purely through deserialization? -->
+     stream can rewrite and re-extend its own behavior at runtime, purely through deserialization?
+
+     assembly=mscorlib (not System.Runtime/System.Threading.Thread) deliberately, so this exact file
+     also loads unmodified on Windows PowerShell 5.1 / .NET Framework (see src/Launch.ps1), where
+     File/Thread/Random/String live in mscorlib, not in the modern .NET facade assemblies. Verified
+     to resolve under both runtimes via mscorlib's compatibility forwarders. -->
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
-        xmlns:io="clr-namespace:System.IO;assembly=System.Runtime"
-        xmlns:thr="clr-namespace:System.Threading;assembly=System.Threading.Thread"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:io="clr-namespace:System.IO;assembly=mscorlib"
+        xmlns:thr="clr-namespace:System.Threading;assembly=mscorlib"
         xmlns:mk="clr-namespace:System.Windows.Markup;assembly=PresentationFramework"
         Title="Stage 0 (launcher) - xaml-write-and-run" Width="480" Height="230"
         WindowStartupLocation="CenterScreen" Background="#172033">
@@ -30,9 +35,9 @@
      composes, not just fires once. -->
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
-        xmlns:io="clr-namespace:System.IO;assembly=System.Runtime"
-        xmlns:thr="clr-namespace:System.Threading;assembly=System.Threading.Thread"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:io="clr-namespace:System.IO;assembly=mscorlib"
+        xmlns:thr="clr-namespace:System.Threading;assembly=mscorlib"
         xmlns:mk="clr-namespace:System.Windows.Markup;assembly=PresentationFramework"
         Title="Stage 1 of 2 - xaml-write-and-run" Width="480" Height="230"
         WindowStartupLocation="CenterScreen" Background="#172033">

@@ -39,10 +39,14 @@ Three generations of `.xaml` "program," each one entirely written by the one bef
    The chain stops here deliberately, not because anything ran out.
 
 All of this is declared in XAML resource entries (`ObjectDataProvider`, `FileStream`, `sys:String`, ...),
-not in C#. The only C# in the repo ([`src/Loader.cs`](src/Loader.cs)) bootstraps a WPF `Application`,
-clears `data/` at the start of a run, and optionally auto-exits after `XWR_AUTO_EXIT_MS` so an unattended
-run terminates instead of waiting for someone to close three popped-up windows. None of that participates
-in the write/sleep/load/show chain itself.
+not in code. There are two interchangeable hosts for the exact same `src/launcher.xaml` -- a compiled
+`.NET` executable ([`src/Loader.cs`](src/Loader.cs)) and a PowerShell script
+([`src/Launch.ps1`](src/Launch.ps1)) -- and both do the same three things: bootstrap a WPF `Application`,
+clear `data/` at the start of a run, and optionally auto-exit after `XWR_AUTO_EXIT_MS` so an unattended run
+terminates instead of waiting for someone to close three popped-up windows. Neither participates in the
+write/sleep/load/show chain itself; that the exact same `.xaml` file runs unmodified under either host is
+itself part of the point -- the program lives in the markup, not in whichever language happens to be
+holding the parser.
 
 Every step also appends a line to `data/run.log` (again via a declarative `File.AppendAllText`
 `ObjectDataProvider`, not code), so the exact order of events is on disk afterward, independent of
@@ -77,11 +81,16 @@ mechanism. That's the result this repo set out to check.
 
 ## Running it
 
-Requires the .NET 10 SDK with WPF support (Windows only -- `UseWPF` needs the desktop workload).
+Windows only (`UseWPF` needs the desktop workload). Two independent ways to run the exact same
+`src/launcher.xaml`:
 
 ```powershell
+# .NET host -- needs the .NET 10 SDK
 cd src
 dotnet run -c Release
+
+# PowerShell host -- needs nothing but Windows PowerShell (or pwsh 7+ with -sta); no build step
+powershell.exe -File src\Launch.ps1
 ```
 
 Three windows will appear in quick succession (roughly 400ms apart, then another 400ms): the launcher,
@@ -89,21 +98,27 @@ Stage 1, and Stage 2. Close them (or let `XWR_AUTO_EXIT_MS` close them for you) 
 at the evidence it left behind:
 
 ```powershell
-Get-Content data\run.log
-Get-Content data\stage1.generated.xaml   # didn't exist before this run
-Get-Content data\stage2.generated.xaml   # didn't exist before this run
+Get-Content src\data\run.log
+Get-Content src\data\stage1.generated.xaml   # didn't exist before this run
+Get-Content src\data\stage2.generated.xaml   # didn't exist before this run
 ```
 
 For an unattended run (no one available to close the windows -- useful for CI or driving this from a
-script/agent), set an auto-exit timer:
+script/agent), set an auto-exit timer before either host:
 
 ```powershell
 $env:XWR_AUTO_EXIT_MS = "4000"
-dotnet run -c Release
+dotnet run -c Release                 # or: powershell.exe -File src\Launch.ps1
 ```
 
-`data/` is recreated fresh (stale `run.log` / `*.generated.xaml` deleted) at the start of every run, so the
-log and generated files always describe only the run you just made.
+`src/data/` is recreated fresh (stale `run.log` / `*.generated.xaml` deleted) at the start of every run, so
+the log and generated files always describe only the run you just made.
+
+`launcher.xaml`'s `sys`/`io`/`thr` XML namespaces deliberately point at `assembly=mscorlib` rather than the
+modern `System.Runtime`/`System.Threading.Thread` facade names, specifically so this one file loads
+unmodified under both runtimes: Windows PowerShell 5.1 runs on .NET Framework, where `File`/`Thread`/
+`Random`/`String` live in `mscorlib` natively; the .NET 10 WPF host resolves the same `mscorlib` name
+through its own compatibility forwarders. Confirmed empirically under both, not assumed.
 
 ## Repo layout
 
@@ -118,8 +133,9 @@ tools/
                                     loaded or run by the program itself)
 src/
   XamlWriteAndRun.csproj
-  Loader.cs                        the only C#; see "What's actually in the chain" above
-  launcher.xaml                    generated file; this is what Loader.cs actually hands to
+  Loader.cs                        .NET host; see "What's actually in the chain" above
+  Launch.ps1                       PowerShell host; loads the same launcher.xaml, no build step
+  launcher.xaml                    generated file; this is what both hosts hand to
                                     XamlReader.Load. Regenerate with tools/build-launcher.ps1 after
                                     editing templates/.
 ```
