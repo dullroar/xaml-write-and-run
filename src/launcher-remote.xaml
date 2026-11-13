@@ -1,8 +1,7 @@
 <!-- STAGE 0, remote-source variant, no compiled code. Unlike launcher.xaml, this file writes nothing
      *new* to disk: it fetches "phase 1" (templates/stage1-remote.xaml) from this repo's own raw
      GitHub URL, not from the local file system, and shows the result. Loaded the same way
-     launcher.xaml is: pass this file's path as Loader.cs's first argument, or to
-     src/Launch.ps1's -Path parameter.
+     launcher.xaml is: pass this file's path to src/Launch.ps1's -Path parameter.
 
      The first version of this experiment used a small compiled C# bridge (src/XamlFetch.cs) to
      combine "download string" and "XamlReader.Parse" into one call, because ObjectDataProvider's
