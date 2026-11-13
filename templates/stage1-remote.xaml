@@ -1,0 +1,99 @@
+<!-- "PHASE 1" of the remote-source variant. This file is never read from local disk by the program
+     that loads it: src/launcher-remote.xaml fetches this exact file's own raw GitHub content over
+     HTTPS, then hands it to XamlReader.Load. Everything below still runs the same way everything
+     always has in this repo: ObjectDataProvider entries, constructed in document order as this text
+     is parsed, no code-behind, no compiled helper of any kind: see src/launcher-remote.xaml's own
+     top comment for why the fetch step needed no compiled bridge after all.
+
+     Once loaded, this repeats the same trick one hop further: it fetches "phase 2" (the existing,
+     completely unmodified templates/stage2.xaml) from ITS raw GitHub URL the same way, and shows it.
+     Phase 2 needed no changes at all to be loaded this way; a terminal payload that neither reads nor
+     writes anything is already agnostic to where it was loaded from. -->
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:io="clr-namespace:System.IO;assembly=mscorlib"
+        xmlns:diag="clr-namespace:System.Diagnostics;assembly=System.Diagnostics.Process"
+        xmlns:mk="clr-namespace:System.Windows.Markup;assembly=PresentationFramework"
+        Title="Phase 1 of 2 (remote source, no compiled code) - xaml-write-and-run" Width="560" Height="250"
+        WindowStartupLocation="CenterScreen" Background="#172033">
+<Window.Resources>
+
+  <ObjectDataProvider x:Key="log1a" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">phase1 (remote): started -- fetched over HTTPS, not read from local disk&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <!-- Downloads phase 2's raw content to a known local path using an external interpreted process:
+       powershell.exe's own Invoke-WebRequest, launched and waited on synchronously via the
+       built-in System.Diagnostics.Process, exactly the same declarative shape every other static
+       call in this repo uses (ProcessStartInfo is a DIRECT resource, not an ObjectDataProvider, so
+       it is a valid MethodParameters entry; see src/launcher-remote.xaml for why that distinction
+       matters). No code of ours runs to perform the fetch: only ProcessStartInfo/Process, both
+       built into .NET, plus a copy of PowerShell this machine already has. -->
+  <!-- Arguments (one flat command-line string), not ArgumentList: ArgumentList does not exist on
+       ProcessStartInfo under .NET Framework and broke the PowerShell 5.1 host; Arguments exists
+       under both runtimes. &quot; is XML-escaping a literal double quote around the inner
+       -Command string. -->
+  <diag:ProcessStartInfo x:Key="dlPhase2Psi" FileName="powershell.exe" UseShellExecute="False" CreateNoWindow="True"
+      Arguments="-NoProfile -Command &quot;Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/dullroar/xaml-write-and-run/refs/heads/main/templates/stage2.xaml' -OutFile 'data/phase2.downloaded.xaml'&quot;"/>
+
+  <ObjectDataProvider x:Key="dlPhase2Proc" ObjectType="{x:Type diag:Process}" MethodName="Start">
+    <ObjectDataProvider.MethodParameters><StaticResource ResourceKey="dlPhase2Psi"/></ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <!-- dlPhase2Proc's StaticResource reference auto-unwraps to its .Data (the Process XamlReader.Load
+       returned from Process.Start) because this is ObjectInstance, not a MethodParameters entry.
+       WaitForExit blocks this resource's construction, and so blocks the parser from moving on to
+       the next resource, until the external download has actually finished. -->
+  <ObjectDataProvider x:Key="dlPhase2Wait" ObjectInstance="{StaticResource dlPhase2Proc}" MethodName="WaitForExit"/>
+
+  <ObjectDataProvider x:Key="log1b" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">phase1 (remote): downloaded phase2 to data/phase2.downloaded.xaml via an external powershell process&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <!-- Later object, same document: opens the file the external process above just wrote: the same
+       direct-resource FileStream pattern launcher.xaml uses for its purely-local write-then-run
+       chain. The only thing that changed is WHERE the bytes being read came from. -->
+  <io:FileStream x:Key="phase2Stream">
+    <x:Arguments>
+      <sys:String>data/phase2.downloaded.xaml</sys:String>
+      <x:Static Member="io:FileMode.Open"/>
+    </x:Arguments>
+  </io:FileStream>
+
+  <ObjectDataProvider x:Key="loadPhase2" ObjectType="{x:Type mk:XamlReader}" MethodName="Load">
+    <ObjectDataProvider.MethodParameters><StaticResource ResourceKey="phase2Stream"/></ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <ObjectDataProvider x:Key="log1c" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">phase1 (remote): loaded phase2 via XamlReader.Load&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <ObjectDataProvider x:Key="showPhase2" ObjectInstance="{StaticResource loadPhase2}" MethodName="Show"/>
+
+  <ObjectDataProvider x:Key="log1d" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">phase1 (remote): called Show() on the downloaded phase2 window&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+</Window.Resources>
+<Grid x:Name="g1r">
+  <StackPanel Margin="20">
+    <TextBlock Foreground="#FFCE56" FontWeight="Bold" FontSize="16" TextWrapping="Wrap"
+               Text="Phase 1 (remote source, no compiled code): I was fetched over HTTPS from this repo's own raw GitHub URL, not read from local disk."/>
+    <TextBlock Foreground="White" FontSize="13" Margin="0,10,0,0" TextWrapping="Wrap"
+               Text="I just downloaded Phase 2 (the existing, unmodified templates/stage2.xaml) the same way, using powershell.exe's own Invoke-WebRequest launched via Process.Start/WaitForExit, and called Show() on it."/>
+  </StackPanel>
+</Grid>
+</Window>

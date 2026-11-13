@@ -1,0 +1,110 @@
+<!-- STAGE 0, remote-source variant, no compiled code. Unlike launcher.xaml, this file writes nothing
+     *new* to disk: it fetches "phase 1" (templates/stage1-remote.xaml) from this repo's own raw
+     GitHub URL, not from the local file system, and shows the result. Loaded the same way
+     launcher.xaml is: pass this file's path as Loader.cs's first argument, or to
+     src/Launch.ps1's -Path parameter.
+
+     The first version of this experiment used a small compiled C# bridge (src/XamlFetch.cs) to
+     combine "download string" and "XamlReader.Parse" into one call, because ObjectDataProvider's
+     MethodParameters/x:Arguments do not unwrap a chained ObjectDataProvider's .Data the way
+     ObjectInstance does (see git history / the PR that added that file for the full finding). That
+     traded one limitation for a different one: it meant this one capability needed the .NET host and
+     stopped working from the PowerShell host, undoing the whole point of src/Launch.ps1 existing.
+
+     This version needs no compiled code at all. The fix is the same trick launcher.xaml already
+     uses for its local write-then-run chain (hand data between steps through the FILE SYSTEM
+     instead of through a method parameter), just with the "write" step performed by an external
+     process instead of File.WriteAllText: System.Diagnostics.Process (built into .NET, invoked the
+     same declarative way as every other built-in type in this repo) launches a copy of
+     powershell.exe to run Invoke-WebRequest, WaitForExit blocks until it's done, and then the
+     downloaded file is read with the exact same direct-resource FileStream + XamlReader.Load pattern
+     the local chain already uses. See templates/stage1-remote.xaml, which repeats this for phase 2. -->
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:io="clr-namespace:System.IO;assembly=mscorlib"
+        xmlns:diag="clr-namespace:System.Diagnostics;assembly=System.Diagnostics.Process"
+        xmlns:mk="clr-namespace:System.Windows.Markup;assembly=PresentationFramework"
+        Title="Stage 0 (remote source, no compiled code) - xaml-write-and-run" Width="560" Height="250"
+        WindowStartupLocation="CenterScreen" Background="#172033">
+<Window.Resources>
+
+  <ObjectDataProvider x:Key="log0a" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">stage0 (remote source, no compiled code): started&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <!-- ProcessStartInfo is constructed directly here (not via ObjectDataProvider), so it is a plain
+       resource, not a chained provider: exactly the same reason FileStream resources elsewhere in
+       this repo are safe to use as MethodParameters entries. Arguments (one flat command-line
+       string), not the newer ArgumentList collection property: ArgumentList does not exist on
+       ProcessStartInfo under .NET Framework, so it broke the PowerShell 5.1 host; Arguments exists
+       under both runtimes. &quot; is XML-escaping a literal double quote, needed because
+       Arguments's value is itself a command line containing a quoted inner -Command string. -->
+  <diag:ProcessStartInfo x:Key="dlPhase1Psi" FileName="powershell.exe" UseShellExecute="False" CreateNoWindow="True"
+      Arguments="-NoProfile -Command &quot;Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/dullroar/xaml-write-and-run/refs/heads/main/templates/stage1-remote.xaml' -OutFile 'data/phase1.downloaded.xaml'&quot;"/>
+
+  <ObjectDataProvider x:Key="dlPhase1Proc" ObjectType="{x:Type diag:Process}" MethodName="Start">
+    <ObjectDataProvider.MethodParameters><StaticResource ResourceKey="dlPhase1Psi"/></ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <!-- dlPhase1Proc's StaticResource reference auto-unwraps to its .Data (the Process Process.Start
+       returned) because this is ObjectInstance, not a MethodParameters entry: the one unwrap that
+       has worked everywhere in this repo. WaitForExit blocks this resource's construction, and so
+       blocks the parser from moving on, until the download has actually finished. -->
+  <ObjectDataProvider x:Key="dlPhase1Wait" ObjectInstance="{StaticResource dlPhase1Proc}" MethodName="WaitForExit"/>
+
+  <ObjectDataProvider x:Key="log0b" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">stage0: downloaded phase1 to data/phase1.downloaded.xaml via an external powershell process&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <io:FileStream x:Key="phase1Stream">
+    <x:Arguments>
+      <sys:String>data/phase1.downloaded.xaml</sys:String>
+      <x:Static Member="io:FileMode.Open"/>
+    </x:Arguments>
+  </io:FileStream>
+
+  <ObjectDataProvider x:Key="loadPhase1" ObjectType="{x:Type mk:XamlReader}" MethodName="Load">
+    <ObjectDataProvider.MethodParameters><StaticResource ResourceKey="phase1Stream"/></ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <ObjectDataProvider x:Key="log0c" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">stage0: loaded phase1 via XamlReader.Load (this transitively downloaded+showed phase2 too)&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+  <ObjectDataProvider x:Key="showPhase1" ObjectInstance="{StaticResource loadPhase1}" MethodName="Show"/>
+
+  <ObjectDataProvider x:Key="log0d" ObjectType="{x:Type io:File}" MethodName="AppendAllText">
+    <ObjectDataProvider.MethodParameters>
+      <sys:String>data/run.log</sys:String>
+      <sys:String xml:space="preserve">stage0: called Show() on the downloaded phase1 window&#10;</sys:String>
+    </ObjectDataProvider.MethodParameters>
+  </ObjectDataProvider>
+
+</Window.Resources>
+<Grid x:Name="g0r">
+  <Grid.Triggers>
+    <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+      <BeginStoryboard><Storyboard>
+        <DoubleAnimation Storyboard.TargetName="g0r" Storyboard.TargetProperty="Opacity"
+                          From="1" To="0.5" Duration="0:0:1" AutoReverse="True" RepeatBehavior="Forever"/>
+      </Storyboard></BeginStoryboard>
+    </EventTrigger>
+  </Grid.Triggers>
+  <StackPanel Margin="20">
+    <TextBlock Foreground="#FFCE56" FontWeight="Bold" FontSize="16" TextWrapping="Wrap"
+               Text="Stage 0 (remote source, no compiled code): I downloaded Phase 1 over HTTPS from this repo's own raw GitHub URL, not from local disk."/>
+    <TextBlock Foreground="White" FontSize="13" Margin="0,10,0,0" TextWrapping="Wrap"
+               Text="The download itself ran as an external powershell.exe process (Invoke-WebRequest), launched and waited on via Process.Start/WaitForExit -- both built into .NET. See data/run.log for the full trace."/>
+  </StackPanel>
+</Grid>
+</Window>

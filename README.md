@@ -79,6 +79,89 @@ show it -- and Stage 3 could do the same, and so on, for as long as each new gen
 write the next one. The chain's length is a decision encoded in the document, not a limitation of the
 mechanism. That's the result this repo set out to check.
 
+## Reading phase 1/2 from GitHub instead of local disk
+
+A follow-on experiment: instead of an early object *writing* the next stage to local disk for a later
+object to read, can a XAML document instead fetch the next stage live from a URL -- specifically, this
+repo's own raw GitHub content -- and run that, with no local file read anywhere in the chain?
+
+Yes, demonstrated in [`src/launcher-remote.xaml`](src/launcher-remote.xaml) and
+[`templates/stage1-remote.xaml`](templates/stage1-remote.xaml): "Phase 1" is fetched over HTTPS from
+`raw.githubusercontent.com` and run; Phase 1, once running, fetches "Phase 2" the same way. Phase 2 is
+the *existing, completely unmodified* `templates/stage2.xaml` -- a terminal payload that neither reads
+nor writes anything needs no changes at all to be loaded this way instead of from local disk.
+
+**Getting there surfaced a genuine limit of the declarative mechanism this whole repo relies on, and two
+dead ends worth recording precisely rather than silently working around:**
+
+- `ObjectDataProvider.ObjectInstance` has special-case logic that unwraps a *chained* `ObjectDataProvider`
+  to its `.Data` when you point it at one via `{StaticResource ...}`. That unwrap is what every multi-step
+  chain in this repo depends on (`next` &rarr; `format` &rarr; `encode`, `write` &rarr; `sleep` &rarr;
+  `load` &rarr; `show`, etc.) -- confirmed by inspecting `.Data` directly in an isolated probe.
+- `ObjectDataProvider.MethodParameters` and `x:Arguments` have **no such unwrap**. A `{StaticResource}`
+  pointing at another `ObjectDataProvider`, used as a method parameter or constructor argument, is passed
+  through as the raw `ObjectDataProvider` object itself -- not its `.Data` -- regardless of whether the
+  method being called is static or instance. Confirmed with four independent probes (a static call, an
+  instance call, a constructor via `x:Arguments`, and a `{Binding}` attempt, which WPF rejects outright
+  inside `MethodParameters`: "can only be set on a DependencyProperty of a DependencyObject"). This is why
+  a naive `ObjectDataProvider` calling `WebClient.DownloadString(url)` feeding a second `ObjectDataProvider`
+  calling `XamlReader.Parse` does not work: there is no way to hand the first step's result to the second
+  as a parameter.
+- WPF's native `ResourceDictionary.Source` -- which *can* fetch XAML from a URI with zero
+  `ObjectDataProvider` involved -- was also tried, pointed at this repo's own raw GitHub URL. It failed
+  too (`ResourceDictionary LoadFrom operation failed`), consistent with it expecting the fetched root
+  element to itself be a `ResourceDictionary`, which `Window`-rooted payloads like ours aren't.
+- XML's own standard remote-include mechanism, a DTD external general entity (`<!ENTITY remote SYSTEM
+  "https://...">`, referenced in the document as `&remote;`), was tried too, and is flatly rejected:
+  `XamlParseException: For security reasons DTD is prohibited in this XML document.` That is .NET's
+  deliberate XXE hardening (default since .NET Framework 4.5.2 / all of .NET Core and later), and this
+  repo isn't going to build a demo whose point is defeating it, so this path stops here as a documented
+  negative result rather than a bypass.
+
+**The fix needs no compiled code at all, and that matters: an earlier version of this file used a
+four-line compiled C# bridge (`WebClient.DownloadString` + `XamlReader.Parse` in one call) to route around
+the `MethodParameters` limitation above. That worked, but only from the `.NET` host -- a XAML file
+referencing a type from the app's own compiled assembly can't be loaded by `src/Launch.ps1`, which has no
+such assembly, undoing the entire point of that script existing.** The real fix reuses the same trick
+`launcher.xaml` already uses for its local write-then-run chain: hand data between steps through the
+*file system* instead of through a method parameter -- just with the "write" performed by an external
+process instead of `File.WriteAllText`. `System.Diagnostics.Process` is built into .NET/.NET Framework
+both, so it is invoked the exact same declarative way as everything else in this repo:
+
+1. A `ProcessStartInfo` is constructed directly as a resource (`FileName="powershell.exe"`, a literal
+   `Arguments` string running `Invoke-WebRequest -OutFile ...`) -- a plain resource, not a chained
+   `ObjectDataProvider`, so it's a safe `MethodParameters` entry for the same reason a directly-constructed
+   `FileStream` always has been.
+2. `Process.Start(ProcessStartInfo)` launches it; `ObjectInstance="{StaticResource <the started process>}"
+   MethodName="WaitForExit"` blocks this resource's construction -- and so blocks the parser from moving
+   on to anything downstream -- until the download has actually finished.
+3. The downloaded file is then opened with the exact same direct-resource `FileStream` +
+   `XamlReader.Load` pattern the local chain already uses.
+
+One real cross-runtime bug found while verifying this under both hosts: `ProcessStartInfo.ArgumentList`
+(the modern collection-of-strings property, which avoids manual command-line quoting) does not exist on
+.NET Framework's `ProcessStartInfo`, so it loaded fine under the `.NET` host and threw `Cannot set unknown
+member 'ArgumentList'` under the PowerShell 5.1 host. Switched to the older `Arguments` single-string
+property, which exists under both, with the inner `-Command` string XML-escaped (`&quot;`) rather than
+hand-quoted. Confirmed clean under both hosts afterward, not assumed.
+
+Run it the same way as the local chain, pointed at the alternate entry file -- works unmodified from
+either host (confirmed, not assumed):
+
+```powershell
+cd src
+dotnet run -c Release -- launcher-remote.xaml
+# or:
+powershell.exe -File Launch.ps1 -Path launcher-remote.xaml
+```
+
+`src/launcher-remote.xaml` fetches `templates/stage1-remote.xaml` from `refs/heads/main` on GitHub, so
+this only resolves once it has actually merged there -- before that, `Invoke-WebRequest` fails inside the
+launched `powershell.exe` process, `data/phase1.downloaded.xaml` never gets created, and the subsequent
+`FileStream` open throws a plain `FileNotFoundException`. That's the correct, expected pre-merge state,
+not a bug. `templates/stage2.xaml` is fetched from `main` too, and already exists there, so that half of
+the chain works regardless.
+
 ## Running it
 
 Windows only (`UseWPF` needs the desktop workload). Two independent ways to run the exact same
@@ -124,10 +207,13 @@ through its own compatibility forwarders. Confirmed empirically under both, not 
 
 ```text
 templates/                        human-edited sources (edit these, not src/launcher.xaml)
-  stage2.xaml                      the terminal payload, standalone-valid XAML
+  stage2.xaml                      the terminal payload, standalone-valid XAML; also "Phase 2" of
+                                    the remote-source variant, unmodified
   stage1.xaml.template             Stage 1, with a __STAGE2_ESCAPED__ placeholder
   launcher.xaml.template           Stage 0, with a __STAGE1_CDATA__ placeholder
   _generated-stage1-reference.xaml generated by tools/build-launcher.ps1, for human review only
+  stage1-remote.xaml               "Phase 1" of the remote-source variant: fetched from GitHub by
+                                    src/launcher-remote.xaml, not read from local disk
 tools/
   build-launcher.ps1               generator: templates/* -> src/launcher.xaml (dev-time only; not
                                     loaded or run by the program itself)
@@ -138,7 +224,14 @@ src/
   launcher.xaml                    generated file; this is what both hosts hand to
                                     XamlReader.Load. Regenerate with tools/build-launcher.ps1 after
                                     editing templates/.
+  launcher-remote.xaml             alternate entry point: fetches Phase 1/2 from GitHub instead of
+                                    writing/reading them locally. No compiled code of its own --
+                                    see "Reading phase 1/2 from GitHub" above.
 ```
+
+No file here is a compiled helper for the remote-source variant: it was tried (`src/XamlFetch.cs`, since
+removed) and abandoned once it became clear it only worked from the `.NET` host, defeating the point of
+`src/Launch.ps1` existing. See "Reading phase 1/2 from GitHub" above for what replaced it.
 
 Stage 1 and Stage 2's final text are never hand-escaped: `tools/build-launcher.ps1` reads the
 human-readable templates and performs the XML-entity escaping (and a CDATA-safety check) mechanically,
@@ -147,8 +240,15 @@ error-prone manual escaping of nested XML-inside-XML.
 
 ## Safety notes
 
-- Everything stays local: no network access, no process execution, no shell invocation anywhere in the
-  chain -- only `File`, `FileStream`, `Thread.Sleep`, and `XamlReader.Load`, all built into .NET/WPF.
+- The local chain (`src/launcher.xaml`) stays entirely local: no network access, no process execution,
+  no shell invocation anywhere in it -- only `File`, `FileStream`, `Thread.Sleep`, and `XamlReader.Load`,
+  all built into .NET/WPF.
+- The remote-source variant (`src/launcher-remote.xaml`) deliberately does make network calls and launch
+  an external process: it runs `powershell.exe -Command "Invoke-WebRequest ..."` to perform a plain,
+  unauthenticated HTTPS GET against `raw.githubusercontent.com`, read-only, fetching only this repo's own
+  public files to a path under `data/`. No other host is ever contacted, nothing is ever sent beyond the
+  GET itself, and the only process ever launched is that one copy of PowerShell running one fixed,
+  hardcoded command -- never anything derived from fetched content or other runtime input.
 - All generated files live under `src/data/` and are deleted and rewritten on every run; nothing outside
   that directory is touched.
 - This is a controlled, bounded demonstration (the chain stops at Stage 2 on purpose) of a mechanism
