@@ -15,6 +15,7 @@
          to BAML, and never give it an x:Class / code-behind. -->
     <Page Remove="**/*.xaml" />
     <None Include="launcher.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="launcher-remote.xaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
