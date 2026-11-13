@@ -139,3 +139,7 @@ error-prone manual escaping of nested XML-inside-XML.
   relevant to real `.NET`/WPF insecure-deserialization research (`ObjectDataProvider` gadgets via
   `XamlReader.Load`), built for understanding that mechanism -- not for use against a system you don't
   own or lack authorization to test.
+
+## License
+
+[MIT](LICENSE)
