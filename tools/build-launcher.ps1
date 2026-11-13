@@ -3,7 +3,7 @@
   Dev-time generator. NOT part of the running program and not loaded by XamlReader at run time.
 
 .DESCRIPTION
-  Produces src/launcher.xaml (the file Loader.cs actually hands to XamlReader.Load) from the
+  Produces src/launcher.xaml (the file src/Launch.ps1 actually hands to XamlReader.Load) from the
   human-edited sources under templates/:
 
     templates/stage2.xaml              -- final, standalone-valid Stage 2 payload

@@ -1,4 +1,3 @@
-bin/
-obj/
 src/data/*.generated.xaml
+src/data/*.downloaded.xaml
 src/data/run.log
