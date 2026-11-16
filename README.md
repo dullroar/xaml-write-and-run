@@ -202,11 +202,13 @@ Windows only (needs WPF, which ships with Windows; Windows PowerShell 5.1 is bui
 No build step, no SDK:
 
 ```powershell
-powershell.exe -File src\Launch.ps1                                      # the local write-then-run chain
-powershell.exe -File src\Launch.ps1 -Path src\launcher-remote.xaml       # the GitHub-fetch chain
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File src\Launch.ps1                                # local chain
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File src\Launch.ps1 -Path src\launcher-remote.xaml # remote chain
 ```
 
-(PowerShell 7+ users: `pwsh -sta -File src\Launch.ps1` -- WPF needs an STA thread, which the default
+(The process-scoped `Bypass` above does not change the machine's execution-policy setting; it only allows
+this inspected local script to run. PowerShell 7+ users: `pwsh -sta -ExecutionPolicy Bypass -File
+src\Launch.ps1` -- WPF needs an STA thread, which the default
 Windows PowerShell console host already is, but `pwsh` needs `-sta` explicitly.)
 
 Three windows will appear in quick succession (roughly 400ms apart for the local chain; a few seconds
@@ -227,8 +229,54 @@ script/agent), set an auto-exit timer first:
 
 ```powershell
 $env:XWR_AUTO_EXIT_MS = "4000"
-powershell.exe -File src\Launch.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File src\Launch.ps1
 ```
+
+### Windows Sandbox (remote-source chain)
+
+Use Windows Sandbox when you want the GitHub-fetch variant to run in an ephemeral VM. This exact
+configuration maps the checkout into the guest **read/write**, because the demonstration writes its
+evidence to `src/data/`. It also explicitly enables networking: the remote-source chain fetches Phase 1
+and Phase 2 from `raw.githubusercontent.com`, so it cannot work with Sandbox networking disabled.
+
+From the repository root, create and launch the configuration below. It runs the remote-source chain
+interactively, so the three WPF windows remain available until you close them:
+
+```powershell
+$repo = (Resolve-Path .).Path
+$wsb = Join-Path $env:TEMP 'xaml-write-and-run-remote.wsb'
+$escapedRepo = [System.Security.SecurityElement]::Escape($repo)
+
+@"
+<Configuration>
+  <Networking>Enable</Networking>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>$escapedRepo</HostFolder>
+      <SandboxFolder>C:\Users\WDAGUtilityAccount\Desktop\xaml-write-and-run</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command &quot;Set-Location 'C:\Users\WDAGUtilityAccount\Desktop\xaml-write-and-run'; &amp; .\src\Launch.ps1 -Path .\src\launcher-remote.xaml&quot;</Command>
+  </LogonCommand>
+</Configuration>
+"@ | Set-Content -LiteralPath $wsb -Encoding utf8
+
+Start-Process -FilePath "$env:WINDIR\System32\WindowsSandbox.exe" -ArgumentList $wsb
+```
+
+The Sandbox is disposable; closing its window discards the guest. The mapped checkout is not disposable:
+the run creates `src/data/run.log`, `phase1.downloaded.xaml`, and `phase2.downloaded.xaml` on the host.
+After closing the three WPF windows (and then the Sandbox), verify the run from the host checkout:
+
+```powershell
+Get-Content src\data\run.log
+Get-Item src\data\phase1.downloaded.xaml, src\data\phase2.downloaded.xaml
+```
+
+Do not use this Sandbox configuration for the local-only chain unless you need isolation: that chain does
+not use the network.
 
 `src/data/` is recreated fresh (stale `run.log` / `*.generated.xaml` / `*.downloaded.xaml` deleted) at the
 start of every run, so the log and generated/downloaded files always describe only the run you just made.
