@@ -1,6 +1,6 @@
 # xaml-write-and-run
 
-A small, isolated research repo spun off from [dullroar/code-challenge](https://github.com/dullroar/code-challenge)'s
+A small, isolated research repo spun off from [dullroar/learn-programming-the-weird-way](https://github.com/dullroar/learn-programming-the-weird-way)'s
 "pure runtime XAML" experiment (`src/xaml/strict.xaml` there). That experiment proved that `XamlReader.Load`,
 fed nothing but a `.xaml` file and WPF's own built-in `ObjectDataProvider`/resource-dictionary machinery,
 can act as a general-purpose declarative interpreter -- no code-behind, no compiled BAML -- and that its
